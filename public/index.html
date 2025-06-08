@@ -2,14 +2,97 @@
 <html lang="pt">
 <head>
   <meta charset="UTF-8">
-  <title>Extrator de Selectores</title>
+  <title>Login e Selectores</title>
 </head>
 <body>
-  <h1>Extrator de Selectores com Puppeteer</h1>
-  <form action="/buscar" method="POST">
-    <label>Insira a URL:</label><br>
-    <input type="text" name="url" placeholder="https://facebook.com" style="width: 400px;"><br><br>
-    <button type="submit">Buscar Selectores</button>
-  </form>
+  <h1>Extração com Login</h1>
+
+  <div id="step-url">
+    <form id="form-url">
+      <label>URL:</label><br>
+      <input type="text" id="url" placeholder="https://facebook.com" style="width: 300px;"><br>
+      <button type="submit">Continuar</button>
+    </form>
+  </div>
+
+  <div id="step-login" style="display:none;">
+    <form id="form-login">
+      <label>Email:</label><br><input type="text" id="email"><br>
+      <label>Senha:</label><br><input type="password" id="senha"><br>
+      <button type="submit">Login Facebook</button>
+    </form>
+  </div>
+
+  <div id="step-2fa" style="display:none;">
+    <form id="form-2fa">
+      <label>Código de Autenticação:</label><br>
+      <input type="text" id="codigo"><br>
+      <button type="submit">Enviar Código</button>
+    </form>
+  </div>
+
+  <div id="resultado" style="display:none;">
+    <h2>Seletores:</h2>
+    <pre id="pre-seletores"></pre>
+  </div>
+
+  <script>
+    const urlForm = document.getElementById('form-url');
+    const loginForm = document.getElementById('form-login');
+    const authForm = document.getElementById('form-2fa');
+
+    urlForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const res = await fetch('/start', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: `url=${encodeURIComponent(document.getElementById('url').value)}`
+      });
+      const data = await res.json();
+      if (data.etapa === 'login') {
+        document.getElementById('step-url').style.display = 'none';
+        document.getElementById('step-login').style.display = 'block';
+      } else if (data.etapa === 'seletores') {
+        mostrarSeletores(data.seletores);
+      }
+    };
+
+    loginForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const res = await fetch('/login-facebook', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: `email=${encodeURIComponent(document.getElementById('email').value)}&senha=${encodeURIComponent(document.getElementById('senha').value)}`
+      });
+      const data = await res.json();
+      document.getElementById('step-login').style.display = 'none';
+
+      if (data.etapa === '2fa') {
+        document.getElementById('step-2fa').style.display = 'block';
+      } else if (data.etapa === 'seletores') {
+        mostrarSeletores(data.seletores);
+      }
+    };
+
+    authForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const res = await fetch('/auth-code', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: `codigo=${encodeURIComponent(document.getElementById('codigo').value)}`
+      });
+      const data = await res.json();
+      document.getElementById('step-2fa').style.display = 'none';
+
+      if (data.etapa === 'seletores') {
+        mostrarSeletores(data.seletores);
+      }
+    };
+
+    function mostrarSeletores(seletores) {
+      document.getElementById('resultado').style.display = 'block';
+      document.getElementById('pre-seletores').textContent = seletores.join('\n');
+    }
+  </script>
 </body>
 </html>
