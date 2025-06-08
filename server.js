@@ -28,55 +28,32 @@ app.post('/buscar', async (req, res) => {
     const page = await browser.newPage();
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-    // Etapa 1: Detectar se é página de login do Facebook
     if (url.includes('facebook.com') && !email && !senha) {
       loginEtapa[url] = 'login';
       await browser.close();
       return res.send('<script>window.location="/?etapa=login";</script>');
     }
 
-    // Etapa 2: Preencher email/senha
     if (email && senha && !codigo) {
       await page.type('input#email', email, { delay: 50 });
       await page.type('input#pass', senha, { delay: 50 });
       await page.click('button[name="login"]');
       await page.waitForTimeout(5000);
 
-      const content = await page.content();
+      const pageContent = await page.content();
 
-      // Detectar erro de senha
-      if (content.includes('senha incorreta') || content.includes('credenciais inválidas') || content.includes('tentar novamente')) {
-        await browser.close();
-        return res.send('<h3>Erro: Email ou senha incorretos. <a href="/">Voltar</a></h3>');
-      }
-
-      // Detectar pedido de código 2FA
-      if (content.includes('Insira o código') || content.includes('Digite o código') || content.includes('código de login')) {
+      if (pageContent.includes('Insira o código') || pageContent.includes('Digite o código') || pageContent.includes('código de login')) {
         loginEtapa[url] = '2fa';
         await browser.close();
         return res.send('<script>window.location="/?etapa=codigo";</script>');
       }
-
-      // Detectar se login falhou de outra forma
-      if (page.url().includes('/login')) {
-        await browser.close();
-        return res.send('<h3>Erro: Login não foi concluído. <a href="/">Tentar novamente</a></h3>');
-      }
     }
 
-    // Etapa 3: Autenticação em 2 fatores
     if (codigo) {
+      // Facebook geralmente usa input[name="approvals_code"]
       await page.type('input[name="approvals_code"]', codigo, { delay: 50 });
       await page.click('button[name="submit[Continue]"]');
       await page.waitForTimeout(4000);
-
-      const content = await page.content();
-
-      // Detectar erro de código
-      if (content.includes('código inválido') || content.includes('tente novamente')) {
-        await browser.close();
-        return res.send('<h3>Erro: Código de autenticação inválido. <a href="/">Tentar novamente</a></h3>');
-      }
 
       // Confirmar navegador
       try {
@@ -84,13 +61,14 @@ app.post('/buscar', async (req, res) => {
         await page.waitForTimeout(2000);
       } catch (e) {}
 
+      // Prosseguir até a tela inicial
       try {
         await page.click('button[name="submit[Continue]"]');
         await page.waitForTimeout(2000);
       } catch (e) {}
     }
 
-    // Após login: extrair todos os seletores
+    // Extrair seletores
     const elementos = await page.evaluate(() => {
       const tipos = ['input', 'textarea', 'select', 'button'];
       const dados = [];
