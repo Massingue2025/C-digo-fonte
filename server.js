@@ -1,7 +1,7 @@
 const express = require('express');
 const bodyParser = require('body-parser');
+const puppeteer = require('puppeteer-core');
 const fs = require('fs');
-const puppeteer = require('puppeteer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -16,24 +16,15 @@ app.get('/', (req, res) => {
 app.post('/buscar', async (req, res) => {
   const url = req.body.url;
 
-  if (!url || !url.startsWith('http')) {
-    return res.send('<h3>URL inválida. Certifique-se de incluir http:// ou https://</h3>');
-  }
-
   try {
     const browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      headless: 'new',
+      executablePath: '/usr/bin/chromium',
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
 
     const page = await browser.newPage();
-
-    await page.goto(url, {
-      waitUntil: 'domcontentloaded',
-      timeout: 30000,
-    });
-
-    // Aguarda 5 segundos adicionais para páginas com JS dinâmico
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(5000);
 
     const elementos = await page.evaluate(() => {
@@ -65,16 +56,9 @@ app.post('/buscar', async (req, res) => {
 
     const htmlContent = `
       <html>
-        <head>
-          <meta charset="UTF-8">
-          <title>Selectores encontrados</title>
-          <style>
-            body { font-family: sans-serif; padding: 20px; background: #f4f4f4; }
-            pre { background: #fff; padding: 15px; border-radius: 5px; box-shadow: 0 0 5px #ccc; }
-          </style>
-        </head>
+        <head><meta charset="UTF-8"><title>Selecionados</title></head>
         <body>
-          <h2>Campos encontrados na página:</h2>
+          <h2>Campos encontrados:</h2>
           <pre>${elementos.join('\n')}</pre>
         </body>
       </html>
