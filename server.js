@@ -1,75 +1,90 @@
 const express = require('express');
-const puppeteer = require('puppeteer');
+const bodyParser = require('body-parser');
 const fs = require('fs');
-const path = require('path');
+const puppeteer = require('puppeteer');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.urlencoded({ extended: true }));
+app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static('public'));
 
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'views/index.html'));
+  res.sendFile(__dirname + '/public/index.html');
 });
 
 app.post('/buscar', async (req, res) => {
   const url = req.body.url;
+
   if (!url || !url.startsWith('http')) {
-    return res.send('URL inválida.');
+    return res.send('<h3>URL inválida. Certifique-se de incluir http:// ou https://</h3>');
   }
 
   try {
     const browser = await puppeteer.launch({
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
 
     const page = await browser.newPage();
-    await page.goto(url, { waitUntil: 'networkidle2' });
 
-    const selectors = await page.evaluate(() => {
-      function getUniqueSelector(el) {
-        if (!el || el.tagName === 'HTML') return 'html';
-        if (el.id) return `#${el.id}`;
-        let path = el.tagName.toLowerCase();
-        if (el.name) path += `[name="${el.name}"]`;
-        return getUniqueSelector(el.parentElement) + ' > ' + path;
-      }
-
-      const fields = Array.from(document.querySelectorAll('input, textarea, select, button'));
-      return fields.map(el => ({
-        tag: el.tagName.toLowerCase(),
-        selector: getUniqueSelector(el)
-      }));
+    await page.goto(url, {
+      waitUntil: 'domcontentloaded',
+      timeout: 30000,
     });
 
-    const html = `
-    <!DOCTYPE html>
-    <html lang="pt">
-    <head>
-      <meta charset="UTF-8">
-      <title>Selectores</title>
-      <style>
-        body { font-family: sans-serif; padding: 20px; }
-        .selector { margin-bottom: 10px; padding: 5px; border-bottom: 1px solid #ccc; }
-        code { background: #eee; padding: 2px 5px; }
-      </style>
-    </head>
-    <body>
-      <h1>Selectores da página</h1>
-      <p><strong>URL:</strong> ${url}</p>
-      ${selectors.map(s => `<div class="selector"><strong>${s.tag}:</strong> <code>${s.selector}</code></div>`).join('')}
-    </body>
-    </html>`;
+    // Aguarda 5 segundos adicionais para páginas com JS dinâmico
+    await page.waitForTimeout(5000);
 
-    fs.writeFileSync(path.join(__dirname, 'public/seletores.html'), html);
+    const elementos = await page.evaluate(() => {
+      const tipos = ['input', 'textarea', 'select', 'button'];
+      const dados = [];
+
+      tipos.forEach(tag => {
+        const els = Array.from(document.querySelectorAll(tag));
+        els.forEach(el => {
+          try {
+            let path = '';
+            let current = el;
+            while (current && current.nodeType === 1 && current.tagName.toLowerCase() !== 'html') {
+              let name = current.tagName.toLowerCase();
+              if (current.id) name += `#${current.id}`;
+              if (current.className) name += `.${current.className.trim().replace(/\s+/g, '.')}`;
+              path = `${name} > ${path}`;
+              current = current.parentElement;
+            }
+            dados.push(`${tag.toUpperCase()}: html > ${path.slice(0, -3)}`);
+          } catch (e) {}
+        });
+      });
+
+      return dados;
+    });
 
     await browser.close();
-    res.redirect('/seletores.html');
 
+    const htmlContent = `
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>Selectores encontrados</title>
+          <style>
+            body { font-family: sans-serif; padding: 20px; background: #f4f4f4; }
+            pre { background: #fff; padding: 15px; border-radius: 5px; box-shadow: 0 0 5px #ccc; }
+          </style>
+        </head>
+        <body>
+          <h2>Campos encontrados na página:</h2>
+          <pre>${elementos.join('\n')}</pre>
+        </body>
+      </html>
+    `;
+
+    fs.writeFileSync(__dirname + '/public/seletores.html', htmlContent, 'utf-8');
+    res.redirect('/seletores.html');
   } catch (err) {
-    console.error(err);
-    res.send('Erro ao processar a página.');
+    console.error('Erro Puppeteer:', err);
+    res.send(`<h3>Erro ao processar a página</h3><pre>${err.message}\n\n${err.stack}</pre>`);
   }
 });
 
